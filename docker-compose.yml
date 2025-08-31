@@ -1,0 +1,94 @@
+version: '3.8'
+services:
+  frontend:
+    image: node:18
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    command: sh -c "npm install && npm run dev"
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+  backend:
+    image: python:3.11
+    working_dir: /app
+    volumes:
+      - ./fastapi-backend:/app
+    environment:
+      - DATABASE_URL=mysql+pymysql://ctf_user:ctf_pass@mariadb:3306/ctf_platform
+      - REDIS_URL=redis://redis:6379/0
+    command: sh -c "pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mariadb
+      - redis
+      - opensearch
+
+  mariadb:
+    image: mariadb:10.6
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: ctf_platform
+      MYSQL_USER: ctf_user
+      MYSQL_PASSWORD: ctf_pass
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  opensearch:
+    image: opensearchproject/opensearch:2.10.0
+    environment:
+      - discovery.type=single-node
+      - plugins.security.disabled=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+
+  minio:
+    image: minio/minio
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+    volumes:
+      - minio_data:/data
+
+  grafana:
+    image: grafana/grafana:9.5.0
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+
+  metabase:
+    image: metabase/metabase:latest
+    ports:
+      - "3001:3000"
+    environment:
+      - MB_DB_TYPE=h2
+
+volumes:
+  mariadb_data:
+  redis_data:
+  opensearch_data:
+  minio_data:
+  grafana_data:
