@@ -720,6 +720,51 @@ const App = () => {
   const LeaderboardPage = ({ leaderboardData }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('all');
+    const [waves, setWaves] = useState([]);
+    const [selectedWave, setSelectedWave] = useState('');
+    const [mode, setMode] = useState('overall'); // 'overall' | 'wave'
+    const [waveData, setWaveData] = useState([]);
+
+    useEffect(() => {
+      const loadWaves = async () => {
+        try {
+          const stats = await api.getScoreboardStats();
+          // fallback to distinct waves endpoint if needed later
+          const wavesResp = await fetch((import.meta.env.VITE_API_BASE || 'http://localhost:8000/api') + '/scoreboard/waves');
+          const wavesJson = await wavesResp.json();
+          const waveKeys = Object.keys(wavesJson || {});
+          setWaves(waveKeys);
+          if (waveKeys.length > 0) setSelectedWave(waveKeys[0]);
+        } catch (e) {
+          console.error('Failed to load waves', e);
+          setWaves([]);
+        }
+      };
+      loadWaves();
+    }, []);
+
+    useEffect(() => {
+      const loadWaveData = async () => {
+        if (mode !== 'wave' || !selectedWave) { setWaveData([]); return; }
+        try {
+          const data = await api.getScoreboardTeams({ wave: selectedWave, limit: 50 });
+          const mapped = data.map((t) => ({
+            rank: t.rank,
+            team: t.name,
+            country: t.country || '',
+            flag: '',
+            points: t.total_points,
+            solved: t.solves,
+            progress: Math.min(100, Math.round((t.total_points / 5000) * 100))
+          }));
+          setWaveData(mapped);
+        } catch (e) {
+          console.error('Failed to load wave scoreboard', e);
+          setWaveData([]);
+        }
+      };
+      loadWaveData();
+    }, [mode, selectedWave]);
 
     const categories = [
       { value: 'all', label: 'All Categories' },
@@ -730,9 +775,11 @@ const App = () => {
       { value: 'pwn', label: 'Binary Exploitation' }
     ];
 
-    const filteredData = leaderboardData.filter(team => 
+    const rows = mode === 'overall' ? leaderboardData : waveData;
+
+    const filteredData = rows.filter(team => 
       team.team.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      team.country.toLowerCase().includes(searchTerm.toLowerCase())
+      (team.country || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     const getRankIcon = (rank) => {
@@ -746,7 +793,7 @@ const App = () => {
       const hours = ['14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00'];
       const chartData = hours.map((time, index) => {
         const dataPoint = { time };
-        leaderboardData.slice(0, 6).forEach(team => {
+        rows.slice(0, 6).forEach(team => {
           const teamKey = team.team.replace(/[^a-zA-Z0-9]/g, '');
           dataPoint[teamKey] = team.points - (Math.random() * 500) + (index * 50);
         });
@@ -769,51 +816,42 @@ const App = () => {
             <p className="text-gray-400 text-lg">Track the progress of all heist crews in real-time</p>
           </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="bg-black/50 backdrop-blur-xl border border-white/10 rounded-xl p-6 text-center hover:border-white/20 transition-all duration-300"
-            >
-              <div className="text-3xl mb-2">👥</div>
-              <div className="text-3xl font-bold mb-2" style={{color: 'var(--theme-primary)'}}>156</div>
-              <div className="text-gray-300 font-medium">Total Crews</div>
-              <div className="text-gray-500 text-sm mt-1">Click to view all</div>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="bg-black/50 backdrop-blur-xl border-2 rounded-xl p-6 text-center hover:border-white/20 transition-all duration-300"
-              style={{borderColor: 'var(--theme-primary)'}}
-            >
-              <div className="text-3xl mb-2">🎯</div>
-              <div className="text-3xl font-bold mb-2" style={{color: 'var(--theme-primary)'}}>89</div>
-              <div className="text-gray-300 font-medium">Active Crews</div>
-              <div className="text-gray-500 text-sm mt-1">Click to view active</div>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              className="bg-black/50 backdrop-blur-xl border border-white/10 rounded-xl p-6 text-center hover:border-white/20 transition-all duration-300"
-            >
-              <div className="text-3xl mb-2">🔓</div>
-              <div className="text-3xl font-bold mb-2" style={{color: 'var(--theme-primary)'}}>24</div>
-              <div className="text-gray-300 font-medium">Challenges Solved</div>
-              <div className="text-gray-500 text-sm mt-1">Click for details</div>
-            </motion.div>
+          {/* Mode + Wave selectors */}
+          <div className="flex flex-wrap items-center gap-4 mb-8">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setMode('overall')}
+                className={`px-4 py-2 rounded-lg font-medium ${mode==='overall' ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                style={{backgroundColor: mode==='overall' ? 'var(--theme-primary)' : 'rgba(255,255,255,0.05)'}}
+              >
+                Overall
+              </button>
+              <button
+                onClick={() => setMode('wave')}
+                className={`px-4 py-2 rounded-lg font-medium ${mode==='wave' ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                style={{backgroundColor: mode==='wave' ? 'var(--theme-primary)' : 'rgba(255,255,255,0.05)'}}
+              >
+                By Wave
+              </button>
+            </div>
+            {mode==='wave' && (
+              <select
+                value={selectedWave}
+                onChange={(e) => setSelectedWave(e.target.value)}
+                className="bg-black/50 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-white/20"
+              >
+                {waves.map((w) => (
+                  <option key={w} value={w} className="bg-black">{w}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Score Progression Chart */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
+            transition={{ delay: 0.2 }}
             className="bg-black/50 backdrop-blur-xl border border-white/10 rounded-xl p-6 mb-8"
           >
             <div className="flex items-center gap-2 mb-4">
@@ -842,7 +880,7 @@ const App = () => {
                     }}
                   />
                   <Legend />
-                  {leaderboardData.slice(0, 6).map((team, index) => (
+                  {rows.slice(0, 6).map((team, index) => (
                     <Line
                       key={team.team}
                       type="monotone"
@@ -854,14 +892,6 @@ const App = () => {
                   ))}
                 </LineChart>
               </ResponsiveContainer>
-            </div>
-            <div className="mt-4">
-              <button 
-                className="w-full py-3 rounded-lg font-medium transition-all duration-200 hover:scale-105"
-                style={{backgroundColor: 'var(--theme-primary)', color: 'white'}}
-              >
-                Click to view detailed live scoreboard
-              </button>
             </div>
           </motion.div>
 
@@ -893,7 +923,7 @@ const App = () => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
+            transition={{ delay: 0.3 }}
             className="bg-black/50 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden"
           >
             {/* Table Header */}
@@ -909,10 +939,10 @@ const App = () => {
             {/* Table Rows */}
             {filteredData.map((team, index) => (
               <motion.div
-                key={team.rank}
+                key={`${team.rank}-${team.team}`}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.1 * index }}
+                transition={{ delay: 0.01 * index }}
                 className="grid grid-cols-6 gap-4 p-4 border-b border-white/5 hover:bg-white/5 transition-all duration-200"
               >
                 <div className="flex items-center gap-2">
@@ -1405,7 +1435,7 @@ const App = () => {
       
       {activeSection === 'waves' && <WavesPage />}
       
-      {activeSection === 'leaderboard' && <LeaderboardPage leaderboardData={leaderboardData} setLeaderboardData={setLeaderboardData} />}
+      {activeSection === 'leaderboard' && <LeaderboardPage leaderboardData={leaderboardData} />}
       
       {activeSection === 'profile' && <ProfilePage />}
       
