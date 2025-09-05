@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronDown, Moon, Sun, Music, Volume2, VolumeX, Play, Pause, MessageCircle, X, Send } from 'lucide-react';
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import './App.css';
-
+import { api } from './utils/api.js';
 
 // Import assets
 import backgroundImg from './assets/background.jpeg';
@@ -26,6 +26,11 @@ const App = () => {
   ]);
   const [newMessage, setNewMessage] = useState('');
   const [leaderboardData, setLeaderboardData] = useState([]);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState('login');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [currentUser, setCurrentUser] = useState(null);
   const audioRef = useRef(null);
 
   // Theme configuration
@@ -64,34 +69,40 @@ const App = () => {
     document.body.className = `theme-${currentTheme} ${isDarkMode ? 'dark' : 'light'}`;
   }, [currentTheme, isDarkMode]);
 
-
+  // Load session
+  useEffect(() => {
+    (async () => {
+      try {
+        const me = await api.me();
+        setCurrentUser(me);
+      } catch (_) {
+        setCurrentUser(null);
+      }
+    })();
+  }, []);
 
   // Fetch leaderboard data from backend
   useEffect(() => {
     const fetchLeaderboard = async () => {
       try {
-        // For now, we'll use mock data, but this could be replaced with a real API call
-        const mockLeaderboardData = [
-          { rank: 1, team: "The Professor's Crew", country: "ES", flag: "🇪🇸", points: 2850, solved: 15, progress: 95 },
-          { rank: 2, team: "Tokyo's Raiders", country: "JP", flag: "🇯🇵", points: 2720, solved: 14, progress: 88 },
-          { rank: 3, team: "Berlin's Elite", country: "DE", flag: "🇩🇪", points: 2650, solved: 13, progress: 82 },
-          { rank: 4, team: "Nairobi's Squad", country: "KE", flag: "🇰🇪", points: 2480, solved: 12, progress: 76 },
-          { rank: 5, team: "Helsinki's Hackers", country: "FI", flag: "🇫🇮", points: 2350, solved: 12, progress: 72 },
-          { rank: 6, team: "Denver's Defenders", country: "US", flag: "🇺🇸", points: 2240, solved: 11, progress: 68 },
-          { rank: 7, team: "Moscow's Masters", country: "RU", flag: "🇷🇺", points: 2120, solved: 11, progress: 64 },
-          { rank: 8, team: "Oslo's Operators", country: "NO", flag: "🇳🇴", points: 2000, solved: 10, progress: 60 },
-          { rank: 9, team: "Rio's Rebels", country: "BR", flag: "🇧🇷", points: 1890, solved: 10, progress: 56 },
-          { rank: 10, team: "Stockholm's Syndicate", country: "SE", flag: "🇸🇪", points: 1780, solved: 9, progress: 52 }
-        ];
-        setLeaderboardData(mockLeaderboardData);
+        const teams = await api.getScoreboardTeams({ limit: 50 });
+        const mapped = teams.map((t) => ({
+          rank: t.rank,
+          team: t.name,
+          country: t.country || '',
+          flag: '',
+          points: t.total_points,
+          solved: t.solves,
+          progress: Math.min(100, Math.round((t.total_points / 5000) * 100))
+        }));
+        setLeaderboardData(mapped);
       } catch (error) {
         console.error('Failed to fetch leaderboard:', error);
+        setLeaderboardData([]);
       }
     };
     fetchLeaderboard();
   }, []);
-
-
 
   // Music control
   const toggleMusic = () => {
@@ -102,6 +113,36 @@ const App = () => {
         audioRef.current.play();
       }
       setIsMusicPlaying(!isMusicPlaying);
+    }
+  };
+
+  const handleSignOut = () => {
+    api.logout();
+    setCurrentUser(null);
+  };
+
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError('');
+    const form = new FormData(e.currentTarget);
+    const username = form.get('username');
+    const password = form.get('password');
+    const email = form.get('email');
+    try {
+      if (authMode === 'login') {
+        await api.login({ username, password });
+      } else {
+        await api.register({ username, email, password });
+        await api.login({ username, password });
+      }
+      const me = await api.me();
+      setCurrentUser(me);
+      setAuthModalOpen(false);
+    } catch (err) {
+      setAuthError(err.message || 'Authentication failed');
+    } finally {
+      setAuthLoading(false);
     }
   };
 
@@ -214,19 +255,61 @@ const App = () => {
 
           {/* Action Buttons */}
           <div className="flex items-center gap-3">
-            <button className="px-4 py-2 text-gray-300 border border-gray-600 rounded-lg hover:bg-white/5 transition-colors duration-200">
-              Sign In
-            </button>
-            <button 
-              className="px-4 py-2 text-white rounded-lg font-medium transition-all duration-200 hover:scale-105"
-              style={{backgroundColor: 'var(--theme-primary)'}}
-            >
-              Join the Heist
-            </button>
+            {currentUser ? (
+              <>
+                <span className="text-gray-300">Hi, {currentUser.username}</span>
+                <button onClick={handleSignOut} className="px-4 py-2 text-gray-300 border border-gray-600 rounded-lg hover:bg-white/5 transition-colors duration-200">
+                  Sign Out
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => { setAuthMode('login'); setAuthModalOpen(true); }} className="px-4 py-2 text-gray-300 border border-gray-600 rounded-lg hover:bg-white/5 transition-colors duration-200">
+                  Sign In
+                </button>
+                <button 
+                  onClick={() => { setAuthMode('register'); setAuthModalOpen(true); }}
+                  className="px-4 py-2 text-white rounded-lg font-medium transition-all duration-200 hover:scale-105"
+                  style={{backgroundColor: 'var(--theme-primary)'}}
+                >
+                  Join the Heist
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
     </nav>
+  );
+
+  // Auth Modal
+  const AuthModal = () => (
+    <AnimatePresence>
+      {authModalOpen && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+          <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }} className="bg-black/90 border border-white/10 rounded-xl p-6 w-full max-w-md">
+            <div className="mb-4">
+              <h3 className="text-2xl font-bold text-white">{authMode === 'login' ? 'Sign In' : 'Create account'}</h3>
+              <p className="text-gray-400 text-sm">Access the CTF platform</p>
+            </div>
+            {authError && <div className="mb-3 text-red-400 text-sm">{authError}</div>}
+            <form onSubmit={handleAuthSubmit} className="space-y-3">
+              <input name="username" required placeholder="Username" className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white" />
+              {authMode === 'register' && (
+                <input name="email" required placeholder="Email" type="email" className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white" />
+              )}
+              <input name="password" required placeholder="Password" type="password" className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white" />
+              <div className="flex items-center justify-between">
+                <button disabled={authLoading} type="submit" className="px-4 py-2 rounded-lg font-medium" style={{backgroundColor: 'var(--theme-primary)', color: 'white'}}>
+                  {authLoading ? 'Please wait…' : (authMode === 'login' ? 'Sign In' : 'Register')}
+                </button>
+                <button type="button" onClick={() => setAuthModalOpen(false)} className="px-4 py-2 text-gray-300 border border-gray-600 rounded-lg">Cancel</button>
+              </div>
+            </form>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 
   // Hero Section
@@ -1310,6 +1393,7 @@ const App = () => {
       <audio ref={audioRef} src={bellaCiaoAudio} loop />
       
       <Navigation />
+      <AuthModal />
       
       {activeSection === 'home' && (
         <>
