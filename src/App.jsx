@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronDown, Moon, Sun, Music, Volume2, VolumeX, Play, Pause, MessageCircle, X, Send } from 'lucide-react';
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import './App.css';
-
+import { api } from './utils/api.js';
 
 // Import assets
 import backgroundImg from './assets/background.jpeg';
@@ -26,6 +26,11 @@ const App = () => {
   ]);
   const [newMessage, setNewMessage] = useState('');
   const [leaderboardData, setLeaderboardData] = useState([]);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState('login');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [currentUser, setCurrentUser] = useState(null);
   const audioRef = useRef(null);
 
   // Theme configuration
@@ -64,34 +69,40 @@ const App = () => {
     document.body.className = `theme-${currentTheme} ${isDarkMode ? 'dark' : 'light'}`;
   }, [currentTheme, isDarkMode]);
 
-
+  // Load session
+  useEffect(() => {
+    (async () => {
+      try {
+        const me = await api.me();
+        setCurrentUser(me);
+      } catch (_) {
+        setCurrentUser(null);
+      }
+    })();
+  }, []);
 
   // Fetch leaderboard data from backend
   useEffect(() => {
     const fetchLeaderboard = async () => {
       try {
-        // For now, we'll use mock data, but this could be replaced with a real API call
-        const mockLeaderboardData = [
-          { rank: 1, team: "The Professor's Crew", country: "ES", flag: "🇪🇸", points: 2850, solved: 15, progress: 95 },
-          { rank: 2, team: "Tokyo's Raiders", country: "JP", flag: "🇯🇵", points: 2720, solved: 14, progress: 88 },
-          { rank: 3, team: "Berlin's Elite", country: "DE", flag: "🇩🇪", points: 2650, solved: 13, progress: 82 },
-          { rank: 4, team: "Nairobi's Squad", country: "KE", flag: "🇰🇪", points: 2480, solved: 12, progress: 76 },
-          { rank: 5, team: "Helsinki's Hackers", country: "FI", flag: "🇫🇮", points: 2350, solved: 12, progress: 72 },
-          { rank: 6, team: "Denver's Defenders", country: "US", flag: "🇺🇸", points: 2240, solved: 11, progress: 68 },
-          { rank: 7, team: "Moscow's Masters", country: "RU", flag: "🇷🇺", points: 2120, solved: 11, progress: 64 },
-          { rank: 8, team: "Oslo's Operators", country: "NO", flag: "🇳🇴", points: 2000, solved: 10, progress: 60 },
-          { rank: 9, team: "Rio's Rebels", country: "BR", flag: "🇧🇷", points: 1890, solved: 10, progress: 56 },
-          { rank: 10, team: "Stockholm's Syndicate", country: "SE", flag: "🇸🇪", points: 1780, solved: 9, progress: 52 }
-        ];
-        setLeaderboardData(mockLeaderboardData);
+        const teams = await api.getScoreboardTeams({ limit: 50 });
+        const mapped = teams.map((t) => ({
+          rank: t.rank,
+          team: t.name,
+          country: t.country || '',
+          flag: '',
+          points: t.total_points,
+          solved: t.solves,
+          progress: Math.min(100, Math.round((t.total_points / 5000) * 100))
+        }));
+        setLeaderboardData(mapped);
       } catch (error) {
         console.error('Failed to fetch leaderboard:', error);
+        setLeaderboardData([]);
       }
     };
     fetchLeaderboard();
   }, []);
-
-
 
   // Music control
   const toggleMusic = () => {
@@ -102,6 +113,36 @@ const App = () => {
         audioRef.current.play();
       }
       setIsMusicPlaying(!isMusicPlaying);
+    }
+  };
+
+  const handleSignOut = () => {
+    api.logout();
+    setCurrentUser(null);
+  };
+
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError('');
+    const form = new FormData(e.currentTarget);
+    const username = form.get('username');
+    const password = form.get('password');
+    const email = form.get('email');
+    try {
+      if (authMode === 'login') {
+        await api.login({ username, password });
+      } else {
+        await api.register({ username, email, password });
+        await api.login({ username, password });
+      }
+      const me = await api.me();
+      setCurrentUser(me);
+      setAuthModalOpen(false);
+    } catch (err) {
+      setAuthError(err.message || 'Authentication failed');
+    } finally {
+      setAuthLoading(false);
     }
   };
 
@@ -214,19 +255,61 @@ const App = () => {
 
           {/* Action Buttons */}
           <div className="flex items-center gap-3">
-            <button className="px-4 py-2 text-gray-300 border border-gray-600 rounded-lg hover:bg-white/5 transition-colors duration-200">
-              Sign In
-            </button>
-            <button 
-              className="px-4 py-2 text-white rounded-lg font-medium transition-all duration-200 hover:scale-105"
-              style={{backgroundColor: 'var(--theme-primary)'}}
-            >
-              Join the Heist
-            </button>
+            {currentUser ? (
+              <>
+                <span className="text-gray-300">Hi, {currentUser.username}</span>
+                <button onClick={handleSignOut} className="px-4 py-2 text-gray-300 border border-gray-600 rounded-lg hover:bg-white/5 transition-colors duration-200">
+                  Sign Out
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => { setAuthMode('login'); setAuthModalOpen(true); }} className="px-4 py-2 text-gray-300 border border-gray-600 rounded-lg hover:bg-white/5 transition-colors duration-200">
+                  Sign In
+                </button>
+                <button 
+                  onClick={() => { setAuthMode('register'); setAuthModalOpen(true); }}
+                  className="px-4 py-2 text-white rounded-lg font-medium transition-all duration-200 hover:scale-105"
+                  style={{backgroundColor: 'var(--theme-primary)'}}
+                >
+                  Join the Heist
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
     </nav>
+  );
+
+  // Auth Modal
+  const AuthModal = () => (
+    <AnimatePresence>
+      {authModalOpen && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+          <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }} className="bg-black/90 border border-white/10 rounded-xl p-6 w-full max-w-md">
+            <div className="mb-4">
+              <h3 className="text-2xl font-bold text-white">{authMode === 'login' ? 'Sign In' : 'Create account'}</h3>
+              <p className="text-gray-400 text-sm">Access the CTF platform</p>
+            </div>
+            {authError && <div className="mb-3 text-red-400 text-sm">{authError}</div>}
+            <form onSubmit={handleAuthSubmit} className="space-y-3">
+              <input name="username" required placeholder="Username" className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white" />
+              {authMode === 'register' && (
+                <input name="email" required placeholder="Email" type="email" className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white" />
+              )}
+              <input name="password" required placeholder="Password" type="password" className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white" />
+              <div className="flex items-center justify-between">
+                <button disabled={authLoading} type="submit" className="px-4 py-2 rounded-lg font-medium" style={{backgroundColor: 'var(--theme-primary)', color: 'white'}}>
+                  {authLoading ? 'Please wait…' : (authMode === 'login' ? 'Sign In' : 'Register')}
+                </button>
+                <button type="button" onClick={() => setAuthModalOpen(false)} className="px-4 py-2 text-gray-300 border border-gray-600 rounded-lg">Cancel</button>
+              </div>
+            </form>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 
   // Hero Section
@@ -637,6 +720,51 @@ const App = () => {
   const LeaderboardPage = ({ leaderboardData }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('all');
+    const [waves, setWaves] = useState([]);
+    const [selectedWave, setSelectedWave] = useState('');
+    const [mode, setMode] = useState('overall'); // 'overall' | 'wave'
+    const [waveData, setWaveData] = useState([]);
+
+    useEffect(() => {
+      const loadWaves = async () => {
+        try {
+          const stats = await api.getScoreboardStats();
+          // fallback to distinct waves endpoint if needed later
+          const wavesResp = await fetch((import.meta.env.VITE_API_BASE || 'http://localhost:8000/api') + '/scoreboard/waves');
+          const wavesJson = await wavesResp.json();
+          const waveKeys = Object.keys(wavesJson || {});
+          setWaves(waveKeys);
+          if (waveKeys.length > 0) setSelectedWave(waveKeys[0]);
+        } catch (e) {
+          console.error('Failed to load waves', e);
+          setWaves([]);
+        }
+      };
+      loadWaves();
+    }, []);
+
+    useEffect(() => {
+      const loadWaveData = async () => {
+        if (mode !== 'wave' || !selectedWave) { setWaveData([]); return; }
+        try {
+          const data = await api.getScoreboardTeams({ wave: selectedWave, limit: 50 });
+          const mapped = data.map((t) => ({
+            rank: t.rank,
+            team: t.name,
+            country: t.country || '',
+            flag: '',
+            points: t.total_points,
+            solved: t.solves,
+            progress: Math.min(100, Math.round((t.total_points / 5000) * 100))
+          }));
+          setWaveData(mapped);
+        } catch (e) {
+          console.error('Failed to load wave scoreboard', e);
+          setWaveData([]);
+        }
+      };
+      loadWaveData();
+    }, [mode, selectedWave]);
 
     const categories = [
       { value: 'all', label: 'All Categories' },
@@ -647,9 +775,11 @@ const App = () => {
       { value: 'pwn', label: 'Binary Exploitation' }
     ];
 
-    const filteredData = leaderboardData.filter(team => 
+    const rows = mode === 'overall' ? leaderboardData : waveData;
+
+    const filteredData = rows.filter(team => 
       team.team.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      team.country.toLowerCase().includes(searchTerm.toLowerCase())
+      (team.country || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     const getRankIcon = (rank) => {
@@ -663,7 +793,7 @@ const App = () => {
       const hours = ['14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00'];
       const chartData = hours.map((time, index) => {
         const dataPoint = { time };
-        leaderboardData.slice(0, 6).forEach(team => {
+        rows.slice(0, 6).forEach(team => {
           const teamKey = team.team.replace(/[^a-zA-Z0-9]/g, '');
           dataPoint[teamKey] = team.points - (Math.random() * 500) + (index * 50);
         });
@@ -686,51 +816,42 @@ const App = () => {
             <p className="text-gray-400 text-lg">Track the progress of all heist crews in real-time</p>
           </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="bg-black/50 backdrop-blur-xl border border-white/10 rounded-xl p-6 text-center hover:border-white/20 transition-all duration-300"
-            >
-              <div className="text-3xl mb-2">👥</div>
-              <div className="text-3xl font-bold mb-2" style={{color: 'var(--theme-primary)'}}>156</div>
-              <div className="text-gray-300 font-medium">Total Crews</div>
-              <div className="text-gray-500 text-sm mt-1">Click to view all</div>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="bg-black/50 backdrop-blur-xl border-2 rounded-xl p-6 text-center hover:border-white/20 transition-all duration-300"
-              style={{borderColor: 'var(--theme-primary)'}}
-            >
-              <div className="text-3xl mb-2">🎯</div>
-              <div className="text-3xl font-bold mb-2" style={{color: 'var(--theme-primary)'}}>89</div>
-              <div className="text-gray-300 font-medium">Active Crews</div>
-              <div className="text-gray-500 text-sm mt-1">Click to view active</div>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              className="bg-black/50 backdrop-blur-xl border border-white/10 rounded-xl p-6 text-center hover:border-white/20 transition-all duration-300"
-            >
-              <div className="text-3xl mb-2">🔓</div>
-              <div className="text-3xl font-bold mb-2" style={{color: 'var(--theme-primary)'}}>24</div>
-              <div className="text-gray-300 font-medium">Challenges Solved</div>
-              <div className="text-gray-500 text-sm mt-1">Click for details</div>
-            </motion.div>
+          {/* Mode + Wave selectors */}
+          <div className="flex flex-wrap items-center gap-4 mb-8">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setMode('overall')}
+                className={`px-4 py-2 rounded-lg font-medium ${mode==='overall' ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                style={{backgroundColor: mode==='overall' ? 'var(--theme-primary)' : 'rgba(255,255,255,0.05)'}}
+              >
+                Overall
+              </button>
+              <button
+                onClick={() => setMode('wave')}
+                className={`px-4 py-2 rounded-lg font-medium ${mode==='wave' ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                style={{backgroundColor: mode==='wave' ? 'var(--theme-primary)' : 'rgba(255,255,255,0.05)'}}
+              >
+                By Wave
+              </button>
+            </div>
+            {mode==='wave' && (
+              <select
+                value={selectedWave}
+                onChange={(e) => setSelectedWave(e.target.value)}
+                className="bg-black/50 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-white/20"
+              >
+                {waves.map((w) => (
+                  <option key={w} value={w} className="bg-black">{w}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Score Progression Chart */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
+            transition={{ delay: 0.2 }}
             className="bg-black/50 backdrop-blur-xl border border-white/10 rounded-xl p-6 mb-8"
           >
             <div className="flex items-center gap-2 mb-4">
@@ -759,7 +880,7 @@ const App = () => {
                     }}
                   />
                   <Legend />
-                  {leaderboardData.slice(0, 6).map((team, index) => (
+                  {rows.slice(0, 6).map((team, index) => (
                     <Line
                       key={team.team}
                       type="monotone"
@@ -771,14 +892,6 @@ const App = () => {
                   ))}
                 </LineChart>
               </ResponsiveContainer>
-            </div>
-            <div className="mt-4">
-              <button 
-                className="w-full py-3 rounded-lg font-medium transition-all duration-200 hover:scale-105"
-                style={{backgroundColor: 'var(--theme-primary)', color: 'white'}}
-              >
-                Click to view detailed live scoreboard
-              </button>
             </div>
           </motion.div>
 
@@ -810,7 +923,7 @@ const App = () => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
+            transition={{ delay: 0.3 }}
             className="bg-black/50 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden"
           >
             {/* Table Header */}
@@ -826,10 +939,10 @@ const App = () => {
             {/* Table Rows */}
             {filteredData.map((team, index) => (
               <motion.div
-                key={team.rank}
+                key={`${team.rank}-${team.team}`}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.1 * index }}
+                transition={{ delay: 0.01 * index }}
                 className="grid grid-cols-6 gap-4 p-4 border-b border-white/5 hover:bg-white/5 transition-all duration-200"
               >
                 <div className="flex items-center gap-2">
@@ -876,25 +989,43 @@ const App = () => {
   // Profile Page Component
   const ProfilePage = () => {
     const [activeTab, setActiveTab] = useState('overview');
-    const [userStats] = useState({
-      totalPoints: 2850,
-      challengesSolved: 15,
-      currentStreak: 5,
-      rank: 1,
-      country: "ES",
-      flag: "🇪🇸",
-      joinDate: "1/15/2024",
-      lastActive: "1 hour ago",
-      email: "professor@heist.com"
-    });
 
-    const [skillProgress] = useState([
-      { name: 'Web Security', level: 8, xp: 450, maxXp: 500, color: '#dc2626' },
-      { name: 'Cryptography', level: 6, xp: 300, maxXp: 400, color: '#2563eb' },
-      { name: 'Digital Forensics', level: 4, xp: 250, maxXp: 350, color: '#7c3aed' },
-      { name: 'Reverse Engineering', level: 3, xp: 180, maxXp: 300, color: '#059669' },
-      { name: 'Binary Exploitation', level: 2, xp: 120, maxXp: 250, color: '#dc2626' }
-    ]);
+    // EDIT: Using real currentUser from API; keeping old mock commented for reference
+    // const [userStats] = useState({
+    //   totalPoints: 2850,
+    //   challengesSolved: 15,
+    //   currentStreak: 5,
+    //   rank: 1,
+    //   country: "ES",
+    //   flag: "🇪🇸",
+    //   joinDate: "1/15/2024",
+    //   lastActive: "1 hour ago",
+    //   email: "professor@heist.com"
+    // });
+
+    const userStats = {
+      totalPoints: currentUser?.points ?? 0,
+      challengesSolved: currentUser?.solves ?? 0,
+      currentStreak: 0,
+      rank: 0,
+      country: currentUser?.country ?? '',
+      flag: '',
+      joinDate: currentUser?.created_at ? new Date(currentUser.created_at).toLocaleDateString() : '-',
+      lastActive: currentUser?.last_active ? new Date(currentUser.last_active).toLocaleString() : '-',
+      email: currentUser?.email ?? '-'
+    };
+
+    // const [skillProgress] = useState([
+    //   { name: 'Web Security', level: 8, xp: 450, maxXp: 500, color: '#dc2626' },
+    //   { name: 'Cryptography', level: 6, xp: 300, maxXp: 400, color: '#2563eb' },
+    //   { name: 'Digital Forensics', level: 4, xp: 250, maxXp: 350, color: '#7c3aed' },
+    //   { name: 'Reverse Engineering', level: 3, xp: 180, maxXp: 300, color: '#059669' },
+    //   { name: 'Binary Exploitation', level: 2, xp: 120, maxXp: 250, color: '#dc2626' }
+    // ]);
+
+    const skillProgress = [
+      { name: 'Overall XP', level: currentUser?.level ?? 1, xp: currentUser?.xp ?? 0, maxXp: ((currentUser?.level ?? 1) * 100), color: 'var(--theme-primary)' }
+    ];
 
     const tabs = [
       { id: 'overview', label: 'Overview', icon: '📊' },
@@ -910,13 +1041,13 @@ const App = () => {
           <div className="text-center mb-12">
             <div className="flex items-center justify-center gap-4 mb-6">
               <div className="w-20 h-20 rounded-full bg-gradient-to-r from-red-600 to-red-800 flex items-center justify-center text-3xl font-bold text-white">
-                P
+                {currentUser?.username?.[0]?.toUpperCase() || '?'}
               </div>
               <div>
                 <h1 className="orbitron text-4xl md:text-5xl font-bold" style={{color: 'var(--theme-primary)'}}>
-                  The Professor
+                  {currentUser?.username || 'Your Profile'}
                 </h1>
-                <p className="text-gray-400 text-lg">Rank #{userStats.rank} • {userStats.flag} {userStats.country}</p>
+                <p className="text-gray-400 text-lg">{currentUser?.country ? ` ${currentUser.country}` : ''}</p>
               </div>
             </div>
           </div>
@@ -934,7 +1065,7 @@ const App = () => {
                 {userStats.totalPoints.toLocaleString()}
               </div>
               <div className="text-gray-300 font-medium">Total Points</div>
-              <div className="text-gray-500 text-sm mt-1">Rank #{userStats.rank}</div>
+              <div className="text-gray-500 text-sm mt-1">Level {currentUser?.level ?? 1}</div>
             </motion.div>
 
             <motion.div
@@ -948,7 +1079,7 @@ const App = () => {
                 {userStats.challengesSolved}
               </div>
               <div className="text-gray-300 font-medium">Challenges Solved</div>
-              <div className="text-gray-500 text-sm mt-1">66.7% success rate</div>
+              <div className="text-gray-500 text-sm mt-1">XP: {currentUser?.xp ?? 0}</div>
             </motion.div>
 
             <motion.div
@@ -962,7 +1093,7 @@ const App = () => {
                 {userStats.currentStreak}
               </div>
               <div className="text-gray-300 font-medium">Current Streak</div>
-              <div className="text-gray-500 text-sm mt-1">Best: 8</div>
+              <div className="text-gray-500 text-sm mt-1">Rank: {userStats.rank}</div>
             </motion.div>
           </div>
 
@@ -1043,12 +1174,12 @@ const App = () => {
                         <div 
                           className="h-3 rounded-full transition-all duration-500"
                           style={{
-                            width: `${(skill.xp / skill.maxXp) * 100}%`,
+                            width: `${Math.min(100, (skill.xp / skill.maxXp) * 100)}%`,
                             backgroundColor: skill.color
                           }}
                         />
                       </div>
-                      <span className="text-xs text-gray-400 w-16">
+                      <span className="text-xs text-gray-400 w-24">
                         {skill.xp}/{skill.maxXp} XP
                       </span>
                     </div>
@@ -1064,25 +1195,45 @@ const App = () => {
 
   // Team Page Component
   const TeamPage = () => {
-    const [hasTeam] = useState(true);
-    const [teamData] = useState({
-      name: "The Professor's Crew",
-      rank: 1,
-      totalPoints: 8450,
-      members: [
-        { name: "The Professor", role: "Leader", points: 2850, country: "ES", flag: "🇪🇸", status: "online" },
-        { name: "Tokyo", role: "Member", points: 2720, country: "JP", flag: "🇯🇵", status: "online" },
-        { name: "Berlin", role: "Member", points: 2650, country: "DE", flag: "🇩🇪", status: "offline" },
-        { name: "Nairobi", role: "Member", points: 230, country: "KE", flag: "🇰🇪", status: "online" }
-      ]
-    });
+    const [hasTeam, setHasTeam] = useState(!!currentUser?.team_id);
+    const [teamData, setTeamData] = useState(null);
 
-    const [teamStats] = useState([
-      { label: "Team Rank", value: "#1", icon: "🏆" },
-      { label: "Total Points", value: "8,450", icon: "🎯" },
-      { label: "Challenges Solved", value: "42", icon: "🔓" },
-      { label: "Team Streak", value: "12", icon: "⚡" }
-    ]);
+    useEffect(() => {
+      if (currentUser?.team_id) {
+        (async () => {
+          try {
+            const t = await api.getTeam(currentUser.team_id);
+            setTeamData(t);
+            setHasTeam(true);
+          } catch (e) {
+            console.error('Failed to load team', e);
+            setHasTeam(false);
+          }
+        })();
+      } else {
+        setHasTeam(false);
+      }
+    }, [currentUser?.team_id]);
+
+    // EDIT: Commented mock team data
+    // const [teamData] = useState({
+    //   name: "The Professor's Crew",
+    //   rank: 1,
+    //   totalPoints: 8450,
+    //   members: [
+    //     { name: "The Professor", role: "Leader", points: 2850, country: "ES", flag: "🇪🇸", status: "online" },
+    //     { name: "Tokyo", role: "Member", points: 2720, country: "JP", flag: "🇯🇵", status: "online" },
+    //     { name: "Berlin", role: "Member", points: 2650, country: "DE", flag: "🇩🇪", status: "offline" },
+    //     { name: "Nairobi", role: "Member", points: 230, country: "KE", flag: "🇰🇪", status: "online" }
+    //   ]
+    // });
+
+    const teamStats = teamData ? [
+      { label: "Team Rank", value: teamData.rank ? `#${teamData.rank}` : '-', icon: "🏆" },
+      { label: "Total Points", value: (teamData.total_points ?? teamData.score_points ?? 0).toLocaleString(), icon: "🎯" },
+      { label: "Members", value: (teamData.members_count ?? 0).toString(), icon: "👥" },
+      { label: "Free Hints", value: (teamData.free_hints_left ?? 0).toString(), icon: "💡" }
+    ] : [];
 
     if (!hasTeam) {
       return (
@@ -1120,13 +1271,13 @@ const App = () => {
           <div className="text-center mb-12">
             <div className="flex items-center justify-center gap-4 mb-6">
               <div className="w-20 h-20 rounded-full bg-gradient-to-r from-red-600 to-red-800 flex items-center justify-center text-3xl font-bold text-white">
-                {teamData.name.charAt(0)}
+                {teamData?.name?.charAt(0) || '?'}
               </div>
               <div>
                 <h1 className="orbitron text-4xl md:text-5xl font-bold" style={{color: 'var(--theme-primary)'}}>
-                  {teamData.name}
+                  {teamData?.name || 'Team'}
                 </h1>
-                <p className="text-gray-400 text-lg">Team Rank #{teamData.rank}</p>
+                <p className="text-gray-400 text-lg">Team Rank #{teamData?.rank ?? '-'}</p>
               </div>
             </div>
           </div>
@@ -1160,42 +1311,13 @@ const App = () => {
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-2xl font-bold text-white flex items-center gap-2">
                 <span>👥</span>
-                Team Members ({teamData.members.length})
+                Team Members
               </h3>
-              <button 
-                className="px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:scale-105"
-                style={{backgroundColor: 'var(--theme-primary)', color: 'white'}}
-              >
-                Invite Member
-              </button>
             </div>
-
             <div className="space-y-4">
-              {teamData.members.map((member, index) => (
-                <div key={index} className="flex items-center justify-between p-4 bg-black/30 rounded-lg">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-r from-red-600 to-red-800 flex items-center justify-center text-lg font-bold text-white">
-                      {member.name.charAt(0)}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-white font-medium">{member.name}</span>
-                        {member.role === 'Leader' && (
-                          <span className="px-2 py-1 bg-yellow-600 text-black text-xs rounded-full font-bold">
-                            LEADER
-                          </span>
-                        )}
-                        <div className={`w-2 h-2 rounded-full ${member.status === 'online' ? 'bg-green-500' : 'bg-gray-500'}`}></div>
-                      </div>
-                      <div className="text-gray-400 text-sm">{member.flag} {member.country}</div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-white font-bold">{member.points.toLocaleString()}</div>
-                    <div className="text-gray-400 text-sm">points</div>
-                  </div>
-                </div>
-              ))}
+              {/* EDIT: Load members from API */}
+              {/* We don't have members inside teamData; fetch via API */}
+              <TeamMembers teamId={currentUser?.team_id} />
             </div>
           </motion.div>
         </div>
@@ -1305,11 +1427,69 @@ const App = () => {
     );
   };
 
+  const TeamMembers = ({ teamId }) => {
+    const [members, setMembers] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+      if (!teamId) return;
+      (async () => {
+        setLoading(true);
+        setError('');
+        try {
+          const list = await api.getTeamMembers(teamId);
+          setMembers(list);
+        } catch (e) {
+          setError('Failed to load team members');
+        } finally {
+          setLoading(false);
+        }
+      })();
+    }, [teamId]);
+
+    if (!teamId) return null;
+
+    if (loading) {
+      return <div className="text-gray-400">Loading members…</div>;
+    }
+    if (error) {
+      return <div className="text-red-400">{error}</div>;
+    }
+    if (!members.length) {
+      return <div className="text-gray-400">No members found.</div>;
+    }
+
+    return (
+      <div className="space-y-3">
+        {members.map((m) => (
+          <div key={m.id} className="flex items-center justify-between p-4 bg-black/30 rounded-lg">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-red-600 to-red-800 flex items-center justify-center text-sm font-bold text-white">
+                {m.username?.[0]?.toUpperCase()}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-white font-medium">{m.username}</span>
+                  {m.role === 'admin' && (
+                    <span className="px-2 py-1 bg-yellow-600 text-black text-xs rounded-full font-bold">ADMIN</span>
+                  )}
+                </div>
+                <div className="text-gray-400 text-sm">{m.email}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-black text-white" style={{backgroundColor: '#000000'}}>
       <audio ref={audioRef} src={bellaCiaoAudio} loop />
       
       <Navigation />
+      <AuthModal />
       
       {activeSection === 'home' && (
         <>
@@ -1321,7 +1501,7 @@ const App = () => {
       
       {activeSection === 'waves' && <WavesPage />}
       
-      {activeSection === 'leaderboard' && <LeaderboardPage leaderboardData={leaderboardData} setLeaderboardData={setLeaderboardData} />}
+      {activeSection === 'leaderboard' && <LeaderboardPage leaderboardData={leaderboardData} />}
       
       {activeSection === 'profile' && <ProfilePage />}
       
