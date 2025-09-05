@@ -35,13 +35,17 @@ async def get_team_members(
 	current_user: User = Depends(get_current_user),
 	db: Session = Depends(get_db)
 ):
+	# EDIT: Authorization - allow same team members or admins only
+	role_value = getattr(current_user.role, "value", str(current_user.role))
+	if current_user.team_id != team_id and role_value != "admin":
+		raise HTTPException(status_code=403, detail="Not authorized to view this team's members")
 	members = db.query(User).filter(User.team_id == team_id).all()
 	return [
 		TeamMemberResponse(
 			id=m.id,
 			username=m.username,
 			email=m.email,
-			role=str(m.role) if hasattr(m, "role") else "player",
+			role=str(getattr(m.role, "value", m.role)),
 		)
 		for m in members
 	]

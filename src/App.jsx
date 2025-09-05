@@ -1302,8 +1302,6 @@ const App = () => {
           </div>
 
           {/* Team Members */}
-          {/* EDIT: Members list requires an endpoint; keeping original mock block commented */}
-          {/*
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1313,45 +1311,15 @@ const App = () => {
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-2xl font-bold text-white flex items-center gap-2">
                 <span>👥</span>
-                Team Members ({teamData.members.length})
+                Team Members
               </h3>
-              <button 
-                className="px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:scale-105"
-                style={{backgroundColor: 'var(--theme-primary)', color: 'white'}}
-              >
-                Invite Member
-              </button>
             </div>
-
             <div className="space-y-4">
-              {teamData.members.map((member, index) => (
-                <div key={index} className="flex items-center justify-between p-4 bg-black/30 rounded-lg">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-r from-red-600 to-red-800 flex items-center justify-center text-lg font-bold text-white">
-                      {member.name.charAt(0)}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-white font-medium">{member.name}</span>
-                        {member.role === 'Leader' && (
-                          <span className="px-2 py-1 bg-yellow-600 text-black text-xs rounded-full font-bold">
-                            LEADER
-                          </span>
-                        )}
-                        <div className={`w-2 h-2 rounded-full ${member.status === 'online' ? 'bg-green-500' : 'bg-gray-500'}`}></div>
-                      </div>
-                      <div className="text-gray-400 text-sm">{member.flag} {member.country}</div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-white font-bold">{member.points.toLocaleString()}</div>
-                    <div className="text-gray-400 text-sm">points</div>
-                  </div>
-                </div>
-              ))}
+              {/* EDIT: Load members from API */}
+              {/* We don't have members inside teamData; fetch via API */}
+              <TeamMembers teamId={currentUser?.team_id} />
             </div>
           </motion.div>
-          */}
         </div>
       </div>
     );
@@ -1456,6 +1424,63 @@ const App = () => {
           )}
         </AnimatePresence>
       </>
+    );
+  };
+
+  const TeamMembers = ({ teamId }) => {
+    const [members, setMembers] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+      if (!teamId) return;
+      (async () => {
+        setLoading(true);
+        setError('');
+        try {
+          const list = await api.getTeamMembers(teamId);
+          setMembers(list);
+        } catch (e) {
+          setError('Failed to load team members');
+        } finally {
+          setLoading(false);
+        }
+      })();
+    }, [teamId]);
+
+    if (!teamId) return null;
+
+    if (loading) {
+      return <div className="text-gray-400">Loading members…</div>;
+    }
+    if (error) {
+      return <div className="text-red-400">{error}</div>;
+    }
+    if (!members.length) {
+      return <div className="text-gray-400">No members found.</div>;
+    }
+
+    return (
+      <div className="space-y-3">
+        {members.map((m) => (
+          <div key={m.id} className="flex items-center justify-between p-4 bg-black/30 rounded-lg">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-red-600 to-red-800 flex items-center justify-center text-sm font-bold text-white">
+                {m.username?.[0]?.toUpperCase()}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-white font-medium">{m.username}</span>
+                  {m.role === 'admin' && (
+                    <span className="px-2 py-1 bg-yellow-600 text-black text-xs rounded-full font-bold">ADMIN</span>
+                  )}
+                </div>
+                <div className="text-gray-400 text-sm">{m.email}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
     );
   };
 

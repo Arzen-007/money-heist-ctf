@@ -122,5 +122,8 @@ export const api = {
 	},
 	async getTeam(id) {
 		return request(`/teams/${id}`, { method: 'GET' });
+	},
+	async getTeamMembers(id) {
+		return request(`/teams/${id}/members`, { method: 'GET' });
 	}
 };
