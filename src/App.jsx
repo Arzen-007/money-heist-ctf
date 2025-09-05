@@ -989,25 +989,43 @@ const App = () => {
   // Profile Page Component
   const ProfilePage = () => {
     const [activeTab, setActiveTab] = useState('overview');
-    const [userStats] = useState({
-      totalPoints: 2850,
-      challengesSolved: 15,
-      currentStreak: 5,
-      rank: 1,
-      country: "ES",
-      flag: "🇪🇸",
-      joinDate: "1/15/2024",
-      lastActive: "1 hour ago",
-      email: "professor@heist.com"
-    });
 
-    const [skillProgress] = useState([
-      { name: 'Web Security', level: 8, xp: 450, maxXp: 500, color: '#dc2626' },
-      { name: 'Cryptography', level: 6, xp: 300, maxXp: 400, color: '#2563eb' },
-      { name: 'Digital Forensics', level: 4, xp: 250, maxXp: 350, color: '#7c3aed' },
-      { name: 'Reverse Engineering', level: 3, xp: 180, maxXp: 300, color: '#059669' },
-      { name: 'Binary Exploitation', level: 2, xp: 120, maxXp: 250, color: '#dc2626' }
-    ]);
+    // EDIT: Using real currentUser from API; keeping old mock commented for reference
+    // const [userStats] = useState({
+    //   totalPoints: 2850,
+    //   challengesSolved: 15,
+    //   currentStreak: 5,
+    //   rank: 1,
+    //   country: "ES",
+    //   flag: "🇪🇸",
+    //   joinDate: "1/15/2024",
+    //   lastActive: "1 hour ago",
+    //   email: "professor@heist.com"
+    // });
+
+    const userStats = {
+      totalPoints: currentUser?.points ?? 0,
+      challengesSolved: currentUser?.solves ?? 0,
+      currentStreak: 0,
+      rank: 0,
+      country: currentUser?.country ?? '',
+      flag: '',
+      joinDate: currentUser?.created_at ? new Date(currentUser.created_at).toLocaleDateString() : '-',
+      lastActive: currentUser?.last_active ? new Date(currentUser.last_active).toLocaleString() : '-',
+      email: currentUser?.email ?? '-'
+    };
+
+    // const [skillProgress] = useState([
+    //   { name: 'Web Security', level: 8, xp: 450, maxXp: 500, color: '#dc2626' },
+    //   { name: 'Cryptography', level: 6, xp: 300, maxXp: 400, color: '#2563eb' },
+    //   { name: 'Digital Forensics', level: 4, xp: 250, maxXp: 350, color: '#7c3aed' },
+    //   { name: 'Reverse Engineering', level: 3, xp: 180, maxXp: 300, color: '#059669' },
+    //   { name: 'Binary Exploitation', level: 2, xp: 120, maxXp: 250, color: '#dc2626' }
+    // ]);
+
+    const skillProgress = [
+      { name: 'Overall XP', level: currentUser?.level ?? 1, xp: currentUser?.xp ?? 0, maxXp: ((currentUser?.level ?? 1) * 100), color: 'var(--theme-primary)' }
+    ];
 
     const tabs = [
       { id: 'overview', label: 'Overview', icon: '📊' },
@@ -1023,13 +1041,13 @@ const App = () => {
           <div className="text-center mb-12">
             <div className="flex items-center justify-center gap-4 mb-6">
               <div className="w-20 h-20 rounded-full bg-gradient-to-r from-red-600 to-red-800 flex items-center justify-center text-3xl font-bold text-white">
-                P
+                {currentUser?.username?.[0]?.toUpperCase() || '?'}
               </div>
               <div>
                 <h1 className="orbitron text-4xl md:text-5xl font-bold" style={{color: 'var(--theme-primary)'}}>
-                  The Professor
+                  {currentUser?.username || 'Your Profile'}
                 </h1>
-                <p className="text-gray-400 text-lg">Rank #{userStats.rank} • {userStats.flag} {userStats.country}</p>
+                <p className="text-gray-400 text-lg">{currentUser?.country ? ` ${currentUser.country}` : ''}</p>
               </div>
             </div>
           </div>
@@ -1047,7 +1065,7 @@ const App = () => {
                 {userStats.totalPoints.toLocaleString()}
               </div>
               <div className="text-gray-300 font-medium">Total Points</div>
-              <div className="text-gray-500 text-sm mt-1">Rank #{userStats.rank}</div>
+              <div className="text-gray-500 text-sm mt-1">Level {currentUser?.level ?? 1}</div>
             </motion.div>
 
             <motion.div
@@ -1061,7 +1079,7 @@ const App = () => {
                 {userStats.challengesSolved}
               </div>
               <div className="text-gray-300 font-medium">Challenges Solved</div>
-              <div className="text-gray-500 text-sm mt-1">66.7% success rate</div>
+              <div className="text-gray-500 text-sm mt-1">XP: {currentUser?.xp ?? 0}</div>
             </motion.div>
 
             <motion.div
@@ -1075,7 +1093,7 @@ const App = () => {
                 {userStats.currentStreak}
               </div>
               <div className="text-gray-300 font-medium">Current Streak</div>
-              <div className="text-gray-500 text-sm mt-1">Best: 8</div>
+              <div className="text-gray-500 text-sm mt-1">Rank: {userStats.rank}</div>
             </motion.div>
           </div>
 
@@ -1156,12 +1174,12 @@ const App = () => {
                         <div 
                           className="h-3 rounded-full transition-all duration-500"
                           style={{
-                            width: `${(skill.xp / skill.maxXp) * 100}%`,
+                            width: `${Math.min(100, (skill.xp / skill.maxXp) * 100)}%`,
                             backgroundColor: skill.color
                           }}
                         />
                       </div>
-                      <span className="text-xs text-gray-400 w-16">
+                      <span className="text-xs text-gray-400 w-24">
                         {skill.xp}/{skill.maxXp} XP
                       </span>
                     </div>
@@ -1177,25 +1195,45 @@ const App = () => {
 
   // Team Page Component
   const TeamPage = () => {
-    const [hasTeam] = useState(true);
-    const [teamData] = useState({
-      name: "The Professor's Crew",
-      rank: 1,
-      totalPoints: 8450,
-      members: [
-        { name: "The Professor", role: "Leader", points: 2850, country: "ES", flag: "🇪🇸", status: "online" },
-        { name: "Tokyo", role: "Member", points: 2720, country: "JP", flag: "🇯🇵", status: "online" },
-        { name: "Berlin", role: "Member", points: 2650, country: "DE", flag: "🇩🇪", status: "offline" },
-        { name: "Nairobi", role: "Member", points: 230, country: "KE", flag: "🇰🇪", status: "online" }
-      ]
-    });
+    const [hasTeam, setHasTeam] = useState(!!currentUser?.team_id);
+    const [teamData, setTeamData] = useState(null);
 
-    const [teamStats] = useState([
-      { label: "Team Rank", value: "#1", icon: "🏆" },
-      { label: "Total Points", value: "8,450", icon: "🎯" },
-      { label: "Challenges Solved", value: "42", icon: "🔓" },
-      { label: "Team Streak", value: "12", icon: "⚡" }
-    ]);
+    useEffect(() => {
+      if (currentUser?.team_id) {
+        (async () => {
+          try {
+            const t = await api.getTeam(currentUser.team_id);
+            setTeamData(t);
+            setHasTeam(true);
+          } catch (e) {
+            console.error('Failed to load team', e);
+            setHasTeam(false);
+          }
+        })();
+      } else {
+        setHasTeam(false);
+      }
+    }, [currentUser?.team_id]);
+
+    // EDIT: Commented mock team data
+    // const [teamData] = useState({
+    //   name: "The Professor's Crew",
+    //   rank: 1,
+    //   totalPoints: 8450,
+    //   members: [
+    //     { name: "The Professor", role: "Leader", points: 2850, country: "ES", flag: "🇪🇸", status: "online" },
+    //     { name: "Tokyo", role: "Member", points: 2720, country: "JP", flag: "🇯🇵", status: "online" },
+    //     { name: "Berlin", role: "Member", points: 2650, country: "DE", flag: "🇩🇪", status: "offline" },
+    //     { name: "Nairobi", role: "Member", points: 230, country: "KE", flag: "🇰🇪", status: "online" }
+    //   ]
+    // });
+
+    const teamStats = teamData ? [
+      { label: "Team Rank", value: teamData.rank ? `#${teamData.rank}` : '-', icon: "🏆" },
+      { label: "Total Points", value: (teamData.total_points ?? teamData.score_points ?? 0).toLocaleString(), icon: "🎯" },
+      { label: "Members", value: (teamData.members_count ?? 0).toString(), icon: "👥" },
+      { label: "Free Hints", value: (teamData.free_hints_left ?? 0).toString(), icon: "💡" }
+    ] : [];
 
     if (!hasTeam) {
       return (
@@ -1233,13 +1271,13 @@ const App = () => {
           <div className="text-center mb-12">
             <div className="flex items-center justify-center gap-4 mb-6">
               <div className="w-20 h-20 rounded-full bg-gradient-to-r from-red-600 to-red-800 flex items-center justify-center text-3xl font-bold text-white">
-                {teamData.name.charAt(0)}
+                {teamData?.name?.charAt(0) || '?'}
               </div>
               <div>
                 <h1 className="orbitron text-4xl md:text-5xl font-bold" style={{color: 'var(--theme-primary)'}}>
-                  {teamData.name}
+                  {teamData?.name || 'Team'}
                 </h1>
-                <p className="text-gray-400 text-lg">Team Rank #{teamData.rank}</p>
+                <p className="text-gray-400 text-lg">Team Rank #{teamData?.rank ?? '-'}</p>
               </div>
             </div>
           </div>
@@ -1264,6 +1302,8 @@ const App = () => {
           </div>
 
           {/* Team Members */}
+          {/* EDIT: Members list requires an endpoint; keeping original mock block commented */}
+          {/*
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1311,6 +1351,7 @@ const App = () => {
               ))}
             </div>
           </motion.div>
+          */}
         </div>
       </div>
     );
